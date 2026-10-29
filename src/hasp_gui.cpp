@@ -79,11 +79,19 @@ static inline void gui_init_lvgl()
 
     /* Create the Virtual Device Buffers */
     const size_t guiVDBsize = LV_VDB_SIZE / sizeof(lv_color_t);
-#ifdef ESP32
+#if defined(ESP32) && LV_VDB_DOUBLE > 0
+    /* Two DMA capable buffers: lvgl renders into one while the other is sent to the TFT */
+    static lv_color_t* guiVdbBuffer1 = (lv_color_t*)heap_caps_malloc(
+        sizeof(lv_color_t) * guiVDBsize, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+    static lv_color_t* guiVdbBuffer2 = (lv_color_t*)heap_caps_malloc(
+        sizeof(lv_color_t) * guiVDBsize, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+#elif defined(ESP32)
     static lv_color_t* guiVdbBuffer1 =
         (lv_color_t*)heap_caps_malloc(sizeof(lv_color_t) * guiVDBsize, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    static lv_color_t* guiVdbBuffer2 = NULL;
 #else
     static lv_color_t* guiVdbBuffer1 = (lv_color_t*)malloc(sizeof(lv_color_t) * guiVDBsize);
+    static lv_color_t* guiVdbBuffer2 = NULL;
 #endif
 
     /* Static VDB allocation */
@@ -92,7 +100,7 @@ static inline void gui_init_lvgl()
 
     /* Initialize VDB */
     if(guiVdbBuffer1 && guiVDBsize > 0) {
-        lv_disp_buf_init(&disp_buf, guiVdbBuffer1, NULL, guiVDBsize);
+        lv_disp_buf_init(&disp_buf, guiVdbBuffer1, guiVdbBuffer2, guiVDBsize);
     } else {
         LOG_FATAL(TAG_GUI, F(D_ERROR_OUT_OF_MEMORY));
     }
@@ -100,7 +108,8 @@ static inline void gui_init_lvgl()
 #ifdef LV_MEM_SIZE
     LOG_VERBOSE(TAG_LVGL, F("MEM size   : %d"), LV_MEM_SIZE);
 #endif
-    LOG_VERBOSE(TAG_LVGL, F("VFB size   : %d"), (size_t)sizeof(lv_color_t) * guiVDBsize);
+    LOG_VERBOSE(TAG_LVGL, F("VFB size   : %d x %d"), (size_t)sizeof(lv_color_t) * guiVDBsize,
+                guiVdbBuffer2 ? 2 : 1);
 }
 
 void gui_hide_pointer(bool hidden)
@@ -701,15 +710,25 @@ void gui_flush_not_complete()
 {
     LOG_WARNING(TAG_GUI, F("Pixelbuffer not completely sent"));
 }
+
+/* The bitmap header expects little-endian RGB565, undo/redo LV_COLOR_16_SWAP around a write */
+static inline void gui_swap_pixel_bytes(lv_color_t* color_p, size_t len)
+{
+#if LV_COLOR_DEPTH == 16 && LV_COLOR_16_SWAP != 0
+    for(size_t i = 0; i < len; i++) color_p[i].full = (color_p[i].full << 8) | (color_p[i].full >> 8);
+#endif
+}
 #endif // HASP_USE_SPIFFS > 0 || HASP_USE_LITTLEFS > 0 || HASP_USE_HTTP > 0 || defined(POSIX)
 
 #if HASP_USE_SPIFFS > 0 || HASP_USE_LITTLEFS > 0
 /* Flush VDB bytes to a file */
 static void gui_screenshot_to_file(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p)
 {
-    size_t len = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1); /* Number of pixels */
-    len *= sizeof(lv_color_t);                                          /* Number of bytes */
+    size_t px  = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1); /* Number of pixels */
+    size_t len = px * sizeof(lv_color_t);                               /* Number of bytes */
+    gui_swap_pixel_bytes(color_p, px);
     size_t res = pFileOut.write((uint8_t*)color_p, len);
+    gui_swap_pixel_bytes(color_p, px);
     if(res != len) gui_flush_not_complete();
 
     // indirect callback to flush screenshot data to the screen
@@ -813,9 +832,11 @@ void guiTakeScreenshot(const char* pFileName)
 /* Flush VDB bytes to a webclient */
 static void gui_screenshot_to_http(lv_disp_drv_t* disp, const lv_area_t* area, lv_color_t* color_p)
 {
-    size_t len = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1); /* Number of pixels */
-    len *= sizeof(lv_color_t);                                          /* Number of bytes */
+    size_t px  = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1); /* Number of pixels */
+    size_t len = px * sizeof(lv_color_t);                               /* Number of bytes */
+    gui_swap_pixel_bytes(color_p, px);
     size_t res = httpClientWrite((uint8_t*)color_p, len);
+    gui_swap_pixel_bytes(color_p, px);
     if(res != len) gui_flush_not_complete();
 
     lv_disp_flush_ready(disp);

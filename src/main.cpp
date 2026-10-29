@@ -278,13 +278,8 @@ IRAM_ATTR void loop()
 #endif
 
 // allow the cpu to switch to other tasks
-#if HASP_USE_LVGL_TASK == 0
-#ifdef ARDUINO_ARCH_ESP8266
-    delay(2); // ms
-#else
-    delay(2); // ms
+#ifndef HASP_LOOP_DELAY
+#define HASP_LOOP_DELAY 2
 #endif
-#else // HASP_USE_LVGL_TASK != 0
-    delay(2); // ms
-#endif
+    delay(HASP_LOOP_DELAY); // ms
 }

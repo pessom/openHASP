@@ -41,7 +41,9 @@
 
  /* Swap the 2 bytes of RGB565 color.
   * Useful if the display has a 8 bit interface (e.g. SPI)*/
+#ifndef LV_COLOR_16_SWAP
 #define LV_COLOR_16_SWAP   0
+#endif
 
   /* 1: Enable screen transparency.
    * Useful for OSD or other overlapping GUIs.
@@ -59,7 +61,9 @@
 
 /* Default display refresh period.
  * Can be changed in the display driver (`lv_disp_drv_t`).*/
+#ifndef LV_DISP_DEF_REFR_PERIOD
 #define LV_DISP_DEF_REFR_PERIOD      50      /*[ms]*/
+#endif
 
  /* Dot Per Inch: used to initialize default sizes.
   * E.g. a button with width = LV_DPI / 2 -> half inch wide

@@ -1359,15 +1359,15 @@ void LovyanGfx::show_info()
 
 void LovyanGfx::splashscreen()
 {
-    uint8_t fg[]       = logoFgColor;
-    uint8_t bg[]       = logoBgColor;
-    lv_color_t fgColor = lv_color_make(fg[0], fg[1], fg[2]);
-    lv_color_t bgColor = lv_color_make(bg[0], bg[1], bg[2]);
+    uint8_t fg[]     = logoFgColor;
+    uint8_t bg[]     = logoBgColor;
+    uint16_t fgColor = tft.color565(fg[0], fg[1], fg[2]); // plain RGB565, independent of LV_COLOR_16_SWAP
+    uint16_t bgColor = tft.color565(bg[0], bg[1], bg[2]);
 
-    tft.fillScreen(bgColor.full);
+    tft.fillScreen(bgColor);
     int x = (tft.width() - logoWidth) / 2;
     int y = (tft.height() - logoHeight) / 2;
-    tft.drawXBitmap(x, y, logoImage, logoWidth, logoHeight, fgColor.full);
+    tft.drawXBitmap(x, y, logoImage, logoWidth, logoHeight, fgColor);
     // tft.fillSmoothRoundRect(x, y, logoWidth, logoWidth, 15, fgColor.full);
 }
 
@@ -1427,6 +1427,22 @@ void IRAM_ATTR LovyanGfx::flush_pixels(lv_disp_drv_t* disp, const lv_area_t* are
     uint32_t w   = (area->x2 - area->x1 + 1);
     uint32_t h   = (area->y2 - area->y1 + 1);
     uint32_t len = w * h;
+
+#if HASP_USE_TFT_DMA > 0
+    /* Keep the transaction open and return while DMA is still sending the pixels.
+     * The next setAddrWindow waits for the transfer to finish, so with two draw buffers
+     * lvgl can render the next area in the meantime. */
+    if(tft.getStartCount() == 0) tft.startWrite();
+    tft.setAddrWindow(area->x1, area->y1, w, h);
+#if LV_COLOR_16_SWAP != 0
+    tft.writePixelsDMA((lgfx::swap565_t*)&color_p->full, len); /* Zero-copy, matches the panel byte order */
+#else
+    tft.writePixelsDMA((lgfx::rgb565_t*)&color_p->full, len);
+#endif
+    if(!disp->buffer->buf2) tft.waitDMA(); /* single buffer: lvgl would overwrite pixels still in transit */
+    lv_disp_flush_ready(disp);
+    return;
+#endif
 
     tft.startWrite(); /* Start new TFT transaction */
 #if defined(ILI9486_DRIVER)
