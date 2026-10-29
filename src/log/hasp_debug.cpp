@@ -390,6 +390,9 @@ bool debugStartSerial()
 #endif
 #endif
 
+#if defined(ARDUINO_ARCH_ESP32) && defined(HASP_SERIAL_TX_BUFFER)
+    HASP_SERIAL.setTxBufferSize(HASP_SERIAL_TX_BUFFER); /* don't block the loop until the log line is sent */
+#endif
     HASP_SERIAL.begin(baudrate); /* prepare for possible serial debug */
     delay(10);
     Log.registerOutput(0, &HASP_SERIAL, HASP_LOG_LEVEL, true); // LOG_LEVEL_VERBOSE

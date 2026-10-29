@@ -45,6 +45,49 @@ char wifiIpAddress[16]                = "";
 bool wifiEnabled                      = true;
 extern uint16_t network_reconnect_counter;
 
+#if defined(ARDUINO_ARCH_ESP32) && HASP_WIFI_FAST_RECONNECT > 0
+// Fast reconnect: remember the channel and BSSID of the last good connection and connect to it directly,
+// fall back to a full channel scan when that fails. Failed attempts are retried with a growing pause
+// (5, 10, 20, 30s) instead of a fixed 30s.
+static uint8_t wifiCacheBssid[6];
+static uint8_t wifiCacheChannel           = 0; // 0 = no valid cache
+static volatile bool wifiCacheDirty       = false;
+static volatile bool wifiAttemptActive    = false;
+static volatile bool wifiFastAttempt      = false;
+static volatile bool wifiFastFailed       = false;
+static uint32_t wifiAttemptStart          = 0;
+static uint8_t wifiRetryCount             = 0;
+static const uint8_t wifiRetryTicks[]     = {1, 2, 4, 6}; // in 5 second ticks
+static const uint32_t WIFI_ATTEMPT_TIMEOUT = 20000;      // ms, consider a silent attempt as failed
+
+static void wifi_cache_load()
+{
+    Preferences preferences;
+    nvs_user_begin(preferences, "wifi", true);
+    String ssid      = preferences.getString("fc_ssid", "");
+    wifiCacheChannel = preferences.getUChar("fc_chan", 0);
+    if(ssid != wifiSsid || preferences.getBytes("fc_bssid", wifiCacheBssid, 6) != 6) wifiCacheChannel = 0;
+    preferences.end();
+}
+
+/* Only write when the AP changed to spare the flash */
+static void wifi_cache_save()
+{
+    wifiCacheDirty = false;
+    Preferences preferences;
+    nvs_user_begin(preferences, "wifi", false);
+    uint8_t bssid[6];
+    if(preferences.getString("fc_ssid", "") != wifiSsid || preferences.getUChar("fc_chan", 0) != wifiCacheChannel ||
+       preferences.getBytes("fc_bssid", bssid, 6) != 6 || memcmp(bssid, wifiCacheBssid, 6)) {
+        preferences.putString("fc_ssid", wifiSsid);
+        preferences.putUChar("fc_chan", wifiCacheChannel);
+        preferences.putBytes("fc_bssid", wifiCacheBssid, 6);
+        LOG_VERBOSE(TAG_WIFI, F("Saved channel %d for fast reconnect"), wifiCacheChannel);
+    }
+    preferences.end();
+}
+#endif
+
 // const byte DNS_PORT = 53;
 // DNSServer dnsServer;
 
@@ -315,6 +358,11 @@ static void wifi_callback(WiFiEvent_t event, WiFiEventInfo_t info)
 
         case SYSTEM_EVENT_STA_CONNECTED: /*!< ESP32 station connected to AP */
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(2, 0, 0)
+#if HASP_WIFI_FAST_RECONNECT > 0
+            memcpy(wifiCacheBssid, info.wifi_sta_connected.bssid, 6);
+            wifiCacheChannel = info.wifi_sta_connected.channel;
+            wifiCacheDirty   = true; // saved from the main loop, not from the event task
+#endif
             wifiSsidConnected((const char*)info.wifi_sta_connected.ssid);
 #else
             wifiSsidConnected((const char*)info.connected.ssid);
@@ -331,6 +379,14 @@ static void wifi_callback(WiFiEvent_t event, WiFiEventInfo_t info)
                                             // break;
         case SYSTEM_EVENT_STA_LOST_IP:      /*!< ESP32 station lost IP and the IP is reset to 0 */
         case SYSTEM_EVENT_STA_DISCONNECTED: /*!< ESP32 station disconnected from AP */
+#if HASP_WIFI_FAST_RECONNECT > 0
+            // Our own WiFi.disconnect() in wifiReconnect arrives late as ASSOC_LEAVE, it is not a failed attempt
+            if(event == SYSTEM_EVENT_STA_DISCONNECTED &&
+               info.wifi_sta_disconnected.reason != WIFI_REASON_ASSOC_LEAVE) {
+                if(wifiAttemptActive && wifiFastAttempt) wifiFastFailed = true; // next attempt does a full scan
+                wifiAttemptActive = false;
+            }
+#endif
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(2, 0, 0)
             wifiDisconnected((const char*)info.wifi_sta_disconnected.ssid, info.wifi_sta_disconnected.reason);
 #else
@@ -340,6 +396,10 @@ static void wifi_callback(WiFiEvent_t event, WiFiEventInfo_t info)
             break;
 
         case SYSTEM_EVENT_STA_GOT_IP: /*!< ESP32 station got IP from connected AP */
+#if HASP_WIFI_FAST_RECONNECT > 0
+            wifiAttemptActive = false;
+            wifiFastFailed    = false;
+#endif
             wifiConnected(IPAddress(info.got_ip.ip_info.ip.addr));
             break;
 
@@ -445,6 +505,19 @@ static void wifiReconnect(void)
         WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE, INADDR_NONE);
 
     WiFi.mode(WIFI_STA);
+#if HASP_WIFI_FAST_RECONNECT > 0
+    wifiFastAttempt   = wifiCacheChannel > 0 && !wifiFastFailed;
+    wifiAttemptActive = true;
+    wifiAttemptStart  = millis();
+    if(wifiFastAttempt) {
+        // Only probe the known channel and connect to the known AP
+        WiFi.setScanMethod(WIFI_FAST_SCAN);
+        WiFi.begin(wifiSsid, wifiPassword, wifiCacheChannel, wifiCacheBssid);
+        LOG_VERBOSE(TAG_WIFI, F("Fast reconnect on channel %d"), wifiCacheChannel);
+        return;
+    }
+    WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+#endif
     WiFi.begin(wifiSsid, wifiPassword);
 #endif
 }
@@ -508,6 +581,9 @@ void wifiSetup()
 #endif
 
         WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+#if defined(ARDUINO_ARCH_ESP32) && HASP_WIFI_FAST_RECONNECT > 0
+        wifi_cache_load();
+#endif
         wifiReconnect();
         WiFi.setAutoReconnect(false); // done in wifiEvery5Seconds
         LOG_TRACE(TAG_WIFI, F(D_WIFI_CONNECTING_TO), wifiSsid);
@@ -528,6 +604,28 @@ bool wifiEvery5Seconds()
 		LOG_DEBUG(TAG_WIFI, F("5sec mode AP %d"), WiFi.getMode());
 		return false;
 	}
+#endif
+
+#if defined(ARDUINO_ARCH_ESP32) && HASP_WIFI_FAST_RECONNECT > 0
+	if(wifiCacheDirty) wifi_cache_save();
+
+	if(WiFi.status() == WL_CONNECTED && WiFi.localIP() > 0) {
+		disconnectionPeriod = 0;
+		wifiRetryCount      = 0;
+		return true;
+	}
+
+	// Let a running attempt finish, unless it hangs
+	if(wifiAttemptActive && millis() - wifiAttemptStart < WIFI_ATTEMPT_TIMEOUT) return false;
+
+	const uint8_t last = sizeof(wifiRetryTicks) - 1;
+	uint8_t ticks      = wifiRetryTicks[wifiRetryCount < last ? wifiRetryCount : last];
+	if(++disconnectionPeriod >= ticks) {
+		disconnectionPeriod = 0;
+		if(wifiRetryCount < UINT8_MAX) wifiRetryCount++;
+		wifiReconnect();
+	}
+	return false;
 #endif
 
 	if(WiFi.status() == WL_CONNECTED && WiFi.localIP() > 0) {

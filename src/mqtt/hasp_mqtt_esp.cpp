@@ -118,6 +118,72 @@ void mqtt_connected()
     // mqtt_run_scripts(); // must happen in LVGL loop
 }
 
+#if HASP_MQTT_PUBLISH_TASK > 0
+// esp_mqtt_client_publish blocks until the data is written to the socket, which stalls the gui loop on a slow
+// network. Hand the message to a separate task instead. esp_mqtt_client_enqueue is not used because the mqtt task
+// only sends its outbox after the next poll timeout, delaying events by up to a second.
+static QueueHandle_t pubQueue;
+
+typedef struct
+{
+    char* topic;
+    char* payload;
+    size_t len;
+    bool retain;
+} mqtt_publish_t;
+
+static void mqtt_publish_task(void* args)
+{
+    mqtt_publish_t msg;
+    while(true) {
+        if(xQueueReceive(pubQueue, &msg, portMAX_DELAY) != pdTRUE) continue;
+
+        if(current_mqtt_state &&
+           esp_mqtt_client_publish(mqttClient, msg.topic, msg.payload, msg.len, mqttQos, msg.retain) != ESP_FAIL) {
+            mqttPublishCount++;
+        } else {
+            mqttFailedCount++;
+        }
+        hasp_free(msg.topic);
+        hasp_free(msg.payload);
+    }
+}
+
+int mqttPublish(const char* topic, const char* payload, size_t len, bool retain)
+{
+    if(!mqttEnabled) return MQTT_ERR_DISABLED;
+    if(!current_mqtt_state) {
+        mqttFailedCount++;
+        return MQTT_ERR_NO_CONN;
+    }
+
+    mqtt_publish_t msg;
+    size_t topic_len = strlen(topic);
+    msg.topic        = (char*)hasp_malloc(topic_len + 1);
+    msg.payload      = (char*)hasp_malloc(len + 1);
+    msg.len          = len;
+    msg.retain       = retain;
+
+    if(!msg.topic || !msg.payload) {
+        hasp_free(msg.topic);
+        hasp_free(msg.payload);
+        mqttFailedCount++;
+        return MQTT_ERR_PUB_FAIL;
+    }
+    memcpy(msg.topic, topic, topic_len + 1);
+    memcpy(msg.payload, payload, len);
+    msg.payload[len] = '\0';
+
+    // Never block the gui loop, drop the message when the queue is full
+    if(xQueueSend(pubQueue, &msg, (TickType_t)0) != pdTRUE) {
+        hasp_free(msg.topic);
+        hasp_free(msg.payload);
+        mqttFailedCount++;
+        return MQTT_ERR_PUB_FAIL;
+    }
+    return MQTT_ERR_OK;
+}
+#else
 int mqttPublish(const char* topic, const char* payload, size_t len, bool retain)
 {
     if(!mqttEnabled) return MQTT_ERR_DISABLED;
@@ -135,6 +201,7 @@ int mqttPublish(const char* topic, const char* payload, size_t len, bool retain)
     mqttFailedCount++;
     return current_mqtt_state ? MQTT_ERR_PUB_FAIL : MQTT_ERR_NO_CONN;
 }
+#endif // HASP_MQTT_PUBLISH_TASK
 
 int mqttPublish(const char* topic, const char* payload, bool retain)
 {
@@ -487,6 +554,10 @@ static esp_err_t mqtt_event_handler(esp_mqtt_event_handle_t event)
 void mqttSetup()
 {
     queue = xQueueCreate(64, sizeof(mqtt_message_t));
+#if HASP_MQTT_PUBLISH_TASK > 0
+    pubQueue = xQueueCreate(32, sizeof(mqtt_publish_t));
+    xTaskCreate(mqtt_publish_task, "mqtt_pub", 3072, NULL, 1, NULL);
+#endif
     // esp_crt_bundle_set(rootca_crt_bundle_start, rootca_crt_bundle_end-rootca_crt_bundle_start);
     //    arduino_esp_crt_bundle_set(rootca_crt_bundle_start);
     mqttStart();
@@ -500,7 +571,7 @@ IRAM_ATTR void mqttLoop(void)
 
     mqtt_message_t data;
     while(xQueueReceive(queue, &data, (TickType_t)0)) {
-        LOG_WARNING(TAG_MQTT, F("[%d] QUE %s => %s"), uxQueueMessagesWaiting(queue), data.topic, data.payload);
+        LOG_TRACE(TAG_MQTT, F("[%d] QUE %s => %s"), uxQueueMessagesWaiting(queue), data.topic, data.payload);
         size_t length = strlen(data.payload);
         dispatch_topic_payload(data.topic, data.payload, length > 0, TAG_MQTT);
         hasp_free(data.topic);
@@ -639,6 +710,11 @@ void mqttStop()
             LOG_TRACE(TAG_MQTT, F(D_MQTT_DISCONNECTING));
         }
         mqtt_send_lwt(false);
+#if HASP_MQTT_PUBLISH_TASK > 0
+        // Give the publish task up to 0.5s to send the queued messages, including the offline LWT
+        for(uint8_t i = 0; i < 50 && uxQueueMessagesWaiting(pubQueue); i++) delay(10);
+        delay(10); // last message may still be in transit
+#endif
         // esp_err_t err = esp_mqtt_client_stop(mqttClient); // Cannot be called from the *MQTT* event handler
         mqtt_cfg.disable_auto_reconnect = true;
         esp_mqtt_set_config(mqttClient, &mqtt_cfg);
