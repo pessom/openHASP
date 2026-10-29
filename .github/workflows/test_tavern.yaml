@@ -36,7 +36,7 @@ jobs:
       - name: Install PlatformIO, Tavern & Mosquitto
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade platformio dulwich tavern
+          pip install --upgrade platformio dulwich "tavern[mqtt]"
           sudo apt-get update
           sudo apt-get install -y mosquitto mosquitto-clients libsdl2-dev
       - name: Create platformio_override.ini
