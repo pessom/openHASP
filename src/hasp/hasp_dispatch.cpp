@@ -1070,6 +1070,11 @@ void dispatch_page(const char*, const char* payload, uint8_t source)
         }
     }
 
+    if(!haspPages.is_valid(pageid)) {
+        dispatch_current_page(); // let the sender resync with the page that is actually shown
+        return;
+    }
+
     dispatch_set_page(pageid, animation, time, delay);
 }
 

@@ -153,15 +153,31 @@ stages:
         click: !int "{hidden:d}"
       timeout: 1
 
-  - name: Test swipe
+  # Since v0.7.0 swipe holds a command: 0 disables it, 1 sets the default page actions
+  - name: Test swipe off
     mqtt_publish:
       topic: hasp/{plate}/command/json
-      payload: '["p1b1.swipe={hidden_inv}","p1b1.swipe"]'
+      payload: '["p1b1.swipe=0","p1b1.swipe"]'
     delay_after: 0
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
       json:
-        swipe: !int "{hidden_inv:d}"
+        swipe: null
+      timeout: 1
+
+  - name: Test swipe on
+    mqtt_publish:
+      topic: hasp/{plate}/command/json
+      payload: '["p1b1.swipe=1","p1b1.swipe"]'
+    delay_after: 0
+    mqtt_response:
+      topic: hasp/{plate}/state/p1b1
+      json:
+        swipe:
+          down: "page back"
+          left: "page next"
+          right: "page prev"
+          up: "page back"
       timeout: 1
 
   - name: Set vis

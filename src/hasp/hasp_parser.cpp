@@ -107,7 +107,8 @@ uint8_t Parser::haspPayloadToPageid(const char* payload)
     } else if(!strcasecmp_P(payload, PSTR("back"))) {
         pageid = haspPages.get_back(current_page);
     } else if(is_only_digits(payload)) {
-        pageid = atoi(payload);
+        // Don't let 300 wrap around to page 44, leave out of range values at 0 (invalid)
+        if(strlen(payload) <= 3 && atoi(payload) <= UINT8_MAX) pageid = atoi(payload);
     }
     return pageid;
 }
