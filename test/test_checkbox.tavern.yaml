@@ -26,6 +26,8 @@ marks:
       key:
         - hidden
         - hidden_inv
+        - hidden_bool
+        - hidden_inv_bool
         - x
         - y
         - w
@@ -35,11 +37,13 @@ marks:
         - str1
         - str2
       vals:
-        - [1, 0, 120, 121, 122, 123, 0, 255, "I'm sorry.", "louie"]
-        - [1, 0, -10, -10, 256, 257, 1, 64, "louie", " The cat stretched."]
+        - [1, 0, "true", "false", 120, 121, 122, 123, 0, 255, "I'm sorry.", "louie"]
+        - [1, 0, "true", "false", -10, -10, 256, 257, 1, 64, "louie", " The cat stretched."]
         - [
             0,
             1,
+            "false",
+            "true",
             1024,
             1025,
             1026,
@@ -52,6 +56,8 @@ marks:
         - [
             0,
             1,
+            "false",
+            "true",
             80,
             81,
             82,
@@ -138,8 +144,7 @@ stages:
     delay_after: 0
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        enabled: !int "{hidden:d}"
+      payload: '{{"enabled":{hidden_bool}}}'
       timeout: 1
 
   - name: Test click
@@ -149,8 +154,7 @@ stages:
     delay_after: 0
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        click: !int "{hidden:d}"
+      payload: '{{"click":{hidden_bool}}}'
       timeout: 1
 
   # Since v0.7.0 swipe holds a command: 0 disables it, 1 sets the default page actions
@@ -191,8 +195,7 @@ stages:
       payload: "p1b1.hidden"
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        hidden: !int "{hidden_inv:d}"
+      payload: '{{"hidden":{hidden_inv_bool}}}'
       timeout: 1
   - name: Get vis
     mqtt_publish:
@@ -200,8 +203,7 @@ stages:
       payload: "p1b1.vis"
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        vis: !int "{hidden:d}"
+      payload: '{{"vis":{hidden_bool}}}'
       timeout: 1
 
   - name: Set hidden
@@ -215,8 +217,7 @@ stages:
       payload: "p1b1.hidden"
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        hidden: !int "{hidden:d}"
+      payload: '{{"hidden":{hidden_bool}}}'
       timeout: 1
 
   - name: Get vis
@@ -225,8 +226,7 @@ stages:
       payload: "p1b1.vis"
     mqtt_response:
       topic: hasp/{plate}/state/p1b1
-      json:
-        vis: !int "{hidden_inv:d}"
+      payload: '{{"vis":{hidden_inv_bool}}}'
       timeout: 1
 
   - name: Test opacity
