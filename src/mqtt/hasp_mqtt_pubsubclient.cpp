@@ -311,7 +311,7 @@ void mqttStart()
     snprintf_P(topic, sizeof(topic), PSTR("%s" MQTT_TOPIC_CONFIG "/#"), mqttNodeTopic);
     mqttSubscribeTo(topic);
 
-#if defined(HASP_USE_CUSTOM)
+#if defined(HASP_USE_CUSTOM) && HASP_USE_CUSTOM > 0
     snprintf_P(topic, sizeof(topic), PSTR("%s" MQTT_TOPIC_CUSTOM "/#"), mqttGroupTopic);
     mqttSubscribeTo(topic);
     snprintf_P(topic, sizeof(topic), PSTR("%s" MQTT_TOPIC_CUSTOM "/#"), mqttNodeTopic);
@@ -393,7 +393,7 @@ void mqtt_get_info(JsonDocument& doc)
     // String mac((char*)0);
     // mac.reserve(64);
 
-    JsonObject info          = doc.createNestedObject(F("MQTT"));
+    JsonObject info = doc[D_INFO_MQTT].to<JsonObject>();
     info[F(D_INFO_SERVER)]   = mqttServer;
     info[F(D_INFO_USERNAME)] = mqttUsername;
     info[F(D_INFO_CLIENTID)] = mqttClientId;

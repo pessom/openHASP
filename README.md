@@ -16,6 +16,9 @@ This rewrite removes the Nextion/TJC hardware requirement by using the [Light an
 
 openHASP uses the ESP32 and STM32F4 to take advantage of the hardware capabilities.
 
+> **Fork note:** this fork contains a performance-tuned build for the ESP32-2432S028R "Cheap Yellow Display".
+> See [docs/cyd-esp32-2432s028r.md](docs/cyd-esp32-2432s028r.md) ([на русском](docs/cyd-esp32-2432s028r.ru.md)).
+
 
 ## Demo Screens
 

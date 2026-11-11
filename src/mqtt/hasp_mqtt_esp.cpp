@@ -438,7 +438,7 @@ void onMqttConnect(esp_mqtt_client_handle_t client)
     // mqttSubscribeTo(mqttGroupTopic + subtopic);
     // mqttSubscribeTo(mqttNodeTopic + subtopic);
 
-#if defined(HASP_USE_CUSTOM)
+#if defined(HASP_USE_CUSTOM) && HASP_USE_CUSTOM > 0
     String subtopic = F(MQTT_TOPIC_CUSTOM "/#");
     mqttSubscribeTo(mqttGroupCommandTopic + subtopic);
     mqttSubscribeTo(mqttNodeCommandTopic + subtopic);
@@ -736,7 +736,7 @@ void mqtt_get_info(JsonDocument& doc)
     String mac((char*)0);
     mac.reserve(64);
 
-    JsonObject info          = doc.createNestedObject(F("MQTT"));
+    JsonObject info = doc[D_INFO_MQTT].to<JsonObject>();
     info[F(D_INFO_SERVER)]   = mqttServer;
     info[F(D_INFO_USERNAME)] = mqttUsername;
     info[F(D_INFO_CLIENTID)] = mqttClientId;

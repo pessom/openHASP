@@ -44,8 +44,8 @@ void event_reset_last_value_sent()
 
 void script_event_handler(const char* eventname, const char* json)
 {
-    StaticJsonDocument<256> doc;
-    StaticJsonDocument<64> filter;
+    JsonDocument doc;
+    JsonDocument filter;
 
     filter[eventname]              = true;
     DeserializationError jsonError = deserializeJson(doc, json, DeserializationOption::Filter(filter));
@@ -97,6 +97,10 @@ void delete_event_handler(lv_obj_t* obj, lv_event_t event)
 
         case LV_HASP_LABEL:
             my_obj_del_task(obj);
+            break;
+
+        case LV_HASP_DROPDOWN:
+            lv_mem_free(lv_dropdown_get_text(obj));
             break;
 
         default:
@@ -293,7 +297,7 @@ static void event_object_selection_changed(lv_obj_t* obj, uint8_t eventid, int16
 {
     char data[512];
     {
-        StaticJsonDocument<256> doc;
+        JsonDocument doc;
         size_t len = text ? strlen(text) : 0;
         doc.set(text); // use text as-is
         char serialized_text[256];
@@ -302,8 +306,8 @@ static void event_object_selection_changed(lv_obj_t* obj, uint8_t eventid, int16
         char eventname[8];
         Parser::get_event_name(eventid, eventname, sizeof(eventname));
         if(const char* tag = my_obj_get_tag(obj))
-            snprintf_P(data, sizeof(data), PSTR("{\"event\":\"%s\",\"val\":%d,\"text\":%s,\"tag\":%s}"), eventname,
-                       val, serialized_text, tag);
+            snprintf_P(data, sizeof(data), PSTR("{\"event\":\"%s\",\"val\":%d,\"text\":%s,\"tag\":%s}"), eventname, val,
+                       serialized_text, tag);
         else
             snprintf_P(data, sizeof(data), PSTR("{\"event\":\"%s\",\"val\":%d,\"text\":%s}"), eventname, val,
                        serialized_text);

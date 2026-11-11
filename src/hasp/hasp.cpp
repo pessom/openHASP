@@ -111,7 +111,8 @@ lv_font_t* hasp_get_font(uint8_t fontid)
  */
 HASP_ATTRIBUTE_FAST_MEM void hasp_update_sleep_state()
 {
-    if(hasp_first_touch_state) return; // don't update sleep when first touch is still active
+    // Don't fast exit, see issue #839
+    // if(hasp_first_touch_state) return; // don't update sleep when first touch is still active
 
     uint32_t idle = lv_disp_get_inactive_time(lv_disp_get_default()) / 1000;
     idle += sleepTimeOffset; // To force a specific state
@@ -712,7 +713,7 @@ void hasp_get_info(JsonDocument& doc)
     std::string buffer;
     buffer.reserve(64);
     char size_buf[32];
-    JsonObject info = doc.createNestedObject(F(D_MANUFACTURER));
+    JsonObject info = doc[D_MANUFACTURER].to<JsonObject>();
 
     buffer = haspDevice.get_version();
 #ifdef COMMIT_HASH
@@ -761,7 +762,7 @@ void hasp_get_info(JsonDocument& doc)
     info[F("Idle")]        = size_buf;
     info[F("Active Page")] = haspPages.get();
 
-    info = doc.createNestedObject(F(D_INFO_DEVICE_MEMORY));
+    info = doc[D_INFO_DEVICE_MEMORY].to<JsonObject>();
     Parser::format_bytes(haspDevice.get_free_heap(), size_buf, sizeof(size_buf));
     info[F(D_INFO_FREE_HEAP)] = size_buf;
     Parser::format_bytes(haspDevice.get_free_max_block(), size_buf, sizeof(size_buf));
@@ -778,7 +779,7 @@ void hasp_get_info(JsonDocument& doc)
 #endif
 
 #if LV_MEM_CUSTOM == 0
-    info = doc.createNestedObject(F(D_INFO_LVGL_MEMORY));
+    info = doc[D_INFO_LVGL_MEMORY].to<JsonObject>();
     lv_mem_monitor_t mem_mon;
     lv_mem_monitor(&mem_mon);
     Parser::format_bytes(mem_mon.total_size, size_buf, sizeof(size_buf));

@@ -326,7 +326,7 @@ void saveConfig()
             if(request->hasArg(PSTR("save"))) {
                 String save = request->arg(PSTR("save"));
 
-                StaticJsonDocument<256> settings;
+                JsonDocument settings;
                 for(int i = 0; i < request->args(); i++) settings[request->argName(i)] = request->arg(i);
 
                 if(save == String(PSTR("hasp"))) {
@@ -548,7 +548,7 @@ void webHandleInfoJson(AsyncWebServerRequest* request)
 
     String htmldata((char*)0);
     htmldata.reserve(HTTP_PAGE_SIZE);
-    DynamicJsonDocument doc(512);
+    JsonDocument doc;
 
     htmldata += F("<h1>");
     htmldata += haspDevice.get_hostname();
@@ -936,7 +936,7 @@ int handleFileRead(AsyncWebServerRequest* request, String path)
 
         if(!strncasecmp(file.name(), configFile.c_str(), configFile.length())) {
             file.close();
-            DynamicJsonDocument settings(MAX_CONFIG_JSON_ALLOC_SIZE);
+            JsonDocument settings;
             DeserializationError error = configParseFile(configFile, settings);
 
             if(error) return 500; // Internal Server Error
@@ -1216,7 +1216,7 @@ void webHandleMqttConfig(AsyncWebServerRequest* request)
 { // http://plate01/config/mqtt
     if(!httpIsAuthenticated(request, F("config/mqtt"))) return;
 
-    StaticJsonDocument<256> settings;
+    JsonDocument settings;
     mqttGetConfig(settings.to<JsonObject>());
 
     {
@@ -1265,7 +1265,7 @@ void webHandleGuiConfig(AsyncWebServerRequest* request)
     if(!httpIsAuthenticated(request, F("config/gui"))) return;
 
     {
-        StaticJsonDocument<256> settings;
+        JsonDocument settings;
         guiGetConfig(settings.to<JsonObject>());
 
         String httpMessage((char*)0);
@@ -1311,7 +1311,7 @@ void webHandleGuiConfig(AsyncWebServerRequest* request)
         httpMessage += getOption(-1, F("None"), bcklpin == -1);
 #if defined(ARDUINO_ARCH_ESP32)
         add_gpio_select_option(httpMessage, 5, bcklpin);  // D8 on ESP32 for D1 mini 32
-        add_gpio_select_option(httpMessage, 12, bcklpin); // TFT_LED on the Liligo Pi
+        add_gpio_select_option(httpMessage, 12, bcklpin); // TFT_LED on the Lilygo Pi
         add_gpio_select_option(httpMessage, 13, bcklpin); // TFT_LED on the D1 R32 + Waveshare
         add_gpio_select_option(httpMessage, 15, bcklpin); // TFT_LED on the AZ Touch
         add_gpio_select_option(httpMessage, 16, bcklpin); // D4 on ESP32 for D1 mini 32
@@ -1353,7 +1353,7 @@ void webHandleWifiConfig(AsyncWebServerRequest* request)
 { // http://plate01/config/wifi
     if(!httpIsAuthenticated(request, F("config/wifi"))) return;
 
-    StaticJsonDocument<256> settings;
+    JsonDocument settings;
     wifiGetConfig(settings.to<JsonObject>());
 
     String httpMessage((char*)0);
@@ -1396,7 +1396,7 @@ void webHandleHttpConfig(AsyncWebServerRequest* request)
     if(!httpIsAuthenticated(request, F("config/http"))) return;
 
     {
-        StaticJsonDocument<256> settings;
+        JsonDocument settings;
         httpGetConfig(settings.to<JsonObject>());
 
         char httpMessage[HTTP_PAGE_SIZE];
@@ -1432,7 +1432,7 @@ void webHandleGpioConfig(AsyncWebServerRequest* request)
     if(!httpIsAuthenticated(request, F("config/gpio"))) return;
     uint8_t configCount = 0;
 
-    //   StaticJsonDocument<256> settings;
+    //   JsonDocument settings;
     // gpioGetConfig(settings.to<JsonObject>());
 
     if(request->hasArg(PSTR("save"))) {
@@ -1462,7 +1462,7 @@ void webHandleGpioConfig(AsyncWebServerRequest* request)
         httpMessage += F("<table><tr><th>" D_GPIO_PIN "</th><th>Type</th><th>" D_GPIO_GROUP
                          "</th><th>Default</th><th>Action</th></tr>");
 
-        for(uint8_t gpio = 0; gpio < NUM_DIGITAL_PINS; gpio++) {
+        for(uint8_t gpio = 0; gpio < HASP_GPIO_PIN_COUNT; gpio++) {
             for(uint8_t id = 0; id < HASP_NUM_GPIO_CONFIG; id++) {
                 hasp_gpio_config_t conf = gpioGetPinConfig(id);
                 if((conf.pin == gpio) && gpioConfigInUse(id) && gpioInUse(gpio) && !gpioIsSystemPin(gpio)) {
@@ -1479,7 +1479,7 @@ void webHandleGpioConfig(AsyncWebServerRequest* request)
 
                     switch(conf.type) {
 
-                        case hasp_gpio_type_t::BUTTON:
+                        case hasp_gpio_type_t::BUTTON_TYPE:
                             httpMessage += F(D_GPIO_BUTTON);
                             break;
                         case hasp_gpio_type_t::SWITCH:
@@ -1622,7 +1622,7 @@ void webHandleGpioOutput(AsyncWebServerRequest* request)
 { // http://plate01/config/gpio/options
     if(!httpIsAuthenticated(request, F("config/gpio/options"))) return;
 
-    StaticJsonDocument<256> settings;
+    JsonDocument settings;
     guiGetConfig(settings.to<JsonObject>());
 
     uint8_t config_id = request->arg(F("id")).toInt();
@@ -1643,7 +1643,7 @@ void webHandleGpioOutput(AsyncWebServerRequest* request)
     httpMessage += F("<p><b>" D_GPIO_PIN "</b> <select id='pin' name='pin'>");
     hasp_gpio_config_t conf = gpioGetPinConfig(config_id);
 
-    for(uint8_t io = 0; io < NUM_DIGITAL_PINS; io++) {
+    for(uint8_t io = 0; io < HASP_GPIO_PIN_COUNT; io++) {
         if(((conf.pin == io) || !gpioInUse(io)) && !gpioIsSystemPin(io)) {
             httpMessage += getOption(io, haspDevice.gpio_name(io).c_str(), conf.pin == io);
         }
@@ -1726,7 +1726,7 @@ void webHandleGpioInput(AsyncWebServerRequest* request)
 { // http://plate01/config/gpio/options
     if(!httpIsAuthenticated(request, F("config/gpio/input"))) return;
     {
-        StaticJsonDocument<256> settings;
+        JsonDocument settings;
         guiGetConfig(settings.to<JsonObject>());
 
         uint8_t config_id = request->arg(F("id")).toInt();
@@ -1747,7 +1747,7 @@ void webHandleGpioInput(AsyncWebServerRequest* request)
         httpMessage += F("<p><b>" D_GPIO_PIN "</b> <select id='pin' name='pin'>");
         hasp_gpio_config_t conf = gpioGetPinConfig(config_id);
 
-        for(uint8_t io = 0; io < NUM_DIGITAL_PINS; io++) {
+        for(uint8_t io = 0; io < HASP_GPIO_PIN_COUNT; io++) {
             if(((conf.pin == io) || !gpioInUse(io)) && !gpioIsSystemPin(io)) {
                 httpMessage += getOption(io, haspDevice.gpio_name(io).c_str(), conf.pin == io);
             }
@@ -1757,8 +1757,8 @@ void webHandleGpioInput(AsyncWebServerRequest* request)
         bool selected;
         httpMessage += F("<p><b>Type</b> <select id='type' name='type'>");
 
-        selected = (conf.type == hasp_gpio_type_t::BUTTON);
-        httpMessage += getOption(hasp_gpio_type_t::BUTTON, F(D_GPIO_BUTTON), selected);
+        selected = (conf.type == hasp_gpio_type_t::BUTTON_TYPE);
+        httpMessage += getOption(hasp_gpio_type_t::BUTTON_TYPE, F(D_GPIO_BUTTON), selected);
 
         selected = (conf.type == hasp_gpio_type_t::SWITCH);
         httpMessage += getOption(hasp_gpio_type_t::SWITCH, F(D_GPIO_SWITCH), selected);
@@ -1852,7 +1852,7 @@ void webHandleDebugConfig(AsyncWebServerRequest* request)
 { // http://plate01/config/debug
     if(!httpIsAuthenticated(request, F("config/debug"))) return;
 
-    StaticJsonDocument<256> settings;
+    JsonDocument settings;
     debugGetConfig(settings.to<JsonObject>());
 
     {
@@ -1918,7 +1918,7 @@ void webHandleHaspConfig(AsyncWebServerRequest* request)
 { // http://plate01/config/http
     if(!httpIsAuthenticated(request, F("config/hasp"))) return;
 
-    StaticJsonDocument<256> settings;
+    JsonDocument settings;
     haspGetConfig(settings.to<JsonObject>());
 
     {

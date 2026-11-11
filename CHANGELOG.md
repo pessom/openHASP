@@ -1,5 +1,27 @@
 # openHASP Changelog
 
+## Fork: ESP32-2432S028R performance build
+
+Tuned build of the `esp32-2432s028r_4MB` environment, see [docs/cyd-esp32-2432s028r.md](docs/cyd-esp32-2432s028r.md).
+All new options are build flags that default to the original behaviour.
+
+- Display: double DMA-capable draw buffer (`LV_VDB_DOUBLE`), non-blocking DMA flush in the LovyanGFX driver (`HASP_USE_TFT_DMA`), zero-copy transfer with `LV_COLOR_16_SWAP`, redraw every 20 ms and touch read every 10 ms
+- `LV_COLOR_16_SWAP` and `LV_DISP_DEF_REFR_PERIOD` can be set from build flags, main loop delay via `HASP_LOOP_DELAY`
+- Screenshots are correct with `LV_COLOR_16_SWAP=1`
+- MQTT: publish from a separate task (`HASP_MQTT_PUBLISH_TASK`), the queue is flushed before disconnecting
+- WiFi: fast reconnect to the last channel/BSSID with fallback to a full scan, retries after 5-10-20-30 s (`HASP_WIFI_FAST_RECONNECT`)
+- FreeType glyph cache increased to 16 kB, WARNING log level and a serial TX buffer (`HASP_SERIAL_TX_BUFFER`)
+- FTP and Telnet disabled for this board
+- Fix: page numbers above 255 no longer wrap around (`page 300` opened page 44), an invalid page number publishes the current page
+- Build scripts no longer depend on `pkg_resources`
+- GitHub Actions workflow `build_cyd.yaml` for this board
+
+## v0.7.1
+
+- Optimizations of system memory usage
+- Rework GT911 driver to use max coordinates from firmware registers
+- Updated ArduinoJson library to v7.4.3
+
 ## v0.7.0
 
 !!! THE PARTITION SCHEME OF THE INTERNAL FLASH HAS CHANGED, CHECK THE DOCS BEFORE UPGRADING !!!
